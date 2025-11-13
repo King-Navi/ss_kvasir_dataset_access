@@ -8,9 +8,11 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "polars (>=1.35.2,<2.0.0)"
+    "polars (>=1.35.2,<2.0.0)",
+    "opencv-python (>=4.12.0.88,<5.0.0.0)"
 ]
-
+[tool.poetry]
+package-mode = false
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

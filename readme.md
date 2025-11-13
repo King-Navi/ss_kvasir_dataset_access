@@ -1,11 +1,12 @@
-Cómo usarlo
+#readmeta.py usage 
+
 ```bash
-python leer_anotaciones.py --path data/anotaciones.csv
+python readmeta.py --path ./input/metadata.csv 
 ```
 
 
 ```bash
-python leer_anotaciones.py --path data/anotaciones.csv --separator ";"
+python readmeta.py --path ./input/metadata.csv --separator ";"
 ```
 
 

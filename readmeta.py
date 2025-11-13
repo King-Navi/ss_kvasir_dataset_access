@@ -10,6 +10,22 @@ COORD_COLS = [
     "x4", "y4",
 ]
 
+FINDING_CLASS_MAP = {
+    "ampulla": "Ampulla of Vater",
+    "angiectasia": "Angiectasia",
+    "blood_fresh": "Blood - fresh",
+    "blood_hematin": "Blood - hematin",
+    "erosion": "Erosion",
+    "erythema": "Erythema",
+    "foreign_body": "Foreign Body",
+    "ileocecal_valve": "Ileocecal valve",
+    "lymphangiectasia": "Lymphangiectasia",
+    "normal_mucosa": "Normal clean mucosa",
+    "polyp": "Polyp",
+    "pylorus": "Pylorus",
+    "reduced_view": "Reduced Mucosal View",
+    "ulcer": "Ulcer",
+}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -71,6 +87,9 @@ def filter_missing_coords(df: pl.DataFrame) -> pl.DataFrame:
 
     return df.filter(cond)
 
+def filter_finding_class(df: pl.DataFrame, keys) -> pl.DataFrame:
+    values = [FINDING_CLASS_MAP[k] for k in keys]
+    return df.filter(pl.col("finding_class").is_in(values))
 
 def main() -> int:
     args = parse_args()
@@ -89,9 +108,12 @@ def main() -> int:
     # filtrar si lo pidió
     if args.drop_missing_coords:
         df_filtered = filter_missing_coords(df)
-        print(f"[INFO] filas después de filtrar coords: {df_filtered.height}")
+        df_polyp_ulcer = filter_finding_class(df_filtered, ["polyp", "ulcer"])
+
+        print(f"[INFO] filas después de filtrar coords: {df_polyp_ulcer.height}")
         # muestra las primeras
-        print(df_filtered.head(10))
+        print(df_polyp_ulcer.head(10))
+        print(df_polyp_ulcer.head(1).select(["video_id","frame_number"]))
     else:
         print("[INFO] no se aplicó filtro de coordenadas (--drop-missing-coords)")
         print(df.head(10))
