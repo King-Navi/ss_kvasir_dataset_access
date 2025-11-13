@@ -27,6 +27,17 @@ FINDING_CLASS_MAP = {
     "ulcer": "Ulcer",
 }
 
+def build_class_mappings():
+    """
+    Build mappings:
+      - full_class_name -> short_key (e.g. 'Polyp' -> 'polyp')
+      - full_class_name -> numeric_id (0..13)
+    Based directly on FINDING_CLASS_MAP insertion order.
+    """
+    full_to_key = {v: k for k, v in FINDING_CLASS_MAP.items()}
+    full_to_id = {v: idx for idx, (k, v) in enumerate(FINDING_CLASS_MAP.items())}
+    return full_to_key, full_to_id
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Lee un CSV de metadata/anotaciones con Polars y (opcional) filtra filas sin coordenadas."
@@ -79,7 +90,7 @@ def load_csv(path: str, separator: str) -> pl.DataFrame:
 
 
 def filter_missing_coords(df: pl.DataFrame) -> pl.DataFrame:
-    # Nos quedamos SOLO con las filas donde TODAS las coords no son nulas
+    # SOLO con las filas donde TODAS las coords no son nulas
     cond = None
     for col in COORD_COLS:
         c = pl.col(col).is_not_null()
@@ -87,9 +98,27 @@ def filter_missing_coords(df: pl.DataFrame) -> pl.DataFrame:
 
     return df.filter(cond)
 
+
+def filter_complete_coords(df: pl.DataFrame) -> pl.DataFrame:
+    # SOLO con filas donde todas las coords:
+    # - no sean null
+    # - no sean NaN
+    cond = pl.all_horizontal([
+        pl.col(c).is_not_null() & ~pl.col(c).is_nan()
+        for c in COORD_COLS
+    ])
+    return df.filter(cond)
+
 def filter_finding_class(df: pl.DataFrame, keys) -> pl.DataFrame:
     values = [FINDING_CLASS_MAP[k] for k in keys]
     return df.filter(pl.col("finding_class").is_in(values))
+
+def rows_with_all_coords_missing(df: pl.DataFrame) -> pl.DataFrame:
+    cond = pl.all_horizontal([
+        pl.col(c).is_null() | pl.col(c).is_nan()
+        for c in COORD_COLS
+    ])
+    return df.filter(cond)
 
 def main() -> int:
     args = parse_args()
@@ -108,9 +137,11 @@ def main() -> int:
     # filtrar si lo pidió
     if args.drop_missing_coords:
         df_filtered = filter_missing_coords(df)
+        print(f"[INFO] filas después de filtrar coords: {df_filtered.height}")
+
         df_polyp_ulcer = filter_finding_class(df_filtered, ["polyp", "ulcer"])
 
-        print(f"[INFO] filas después de filtrar coords: {df_polyp_ulcer.height}")
+        print(f"[INFO] filas después de filtrar coords (clases pedidas): {df_polyp_ulcer.height}")
         # muestra las primeras
         print(df_polyp_ulcer.head(10))
         print(df_polyp_ulcer.head(1).select(["video_id","frame_number"]))

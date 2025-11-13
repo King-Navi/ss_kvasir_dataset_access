@@ -2,10 +2,10 @@
 import os
 import cv2
 
-X = "/home/ivan/Downloads/OSF_dataset_Kvasir/labelled_videos"
-OUTPUT = "/home/ivan/Downloads/ss_kvasir_dataset_access/output"
+VIDEO_PATH = "/home/ivan/Downloads/drive_dataset_kvasir/labelled_videos/videos"
+OUTPUT = "/home/ivan/Downloads/jose_luis_act/output"
 
-def get_video_frame(frame_number, video_name, base_path=X, default_ext="mp4"):
+def get_video_frame(frame_number, video_name, base_path=VIDEO_PATH, default_ext="mp4"):
     """
     Returns a specific frame from a video as a NumPy array (BGR format).
 
@@ -44,7 +44,7 @@ def get_video_frame(frame_number, video_name, base_path=X, default_ext="mp4"):
     return frame
 
 
-def get_video_frame_and_second(frame_number, video_name, base_path=X, default_ext="mp4"):
+def get_video_frame_and_second(frame_number, video_name, base_path=VIDEO_PATH, default_ext="mp4"):
     """
     Returns
     -------
@@ -85,8 +85,8 @@ def get_video_frame_and_second(frame_number, video_name, base_path=X, default_ex
     return frame, time_sec
 
 if __name__ == "__main__":
-    if not os.path.isdir(X):
-        raise FileNotFoundError(f"Input folder does not exist: {X}")
+    if not os.path.isdir(VIDEO_PATH):
+        raise FileNotFoundError(f"Input folder does not exist: {VIDEO_PATH}")
     video_name = "7a47e8eacea04e64"
     frame_num = 52355
     frame = get_video_frame(frame_num, video_name)
