@@ -9,12 +9,52 @@ import polars as pl
 
 from readmeta import (
     load_csv,
-    FINDING_CLASS_MAP,
-    build_class_mappings,
-    COORD_COLS,
+    build_class_mappings
 )
-from video import get_video_frame, OUTPUT
+from video import get_video_frame
+from constants import FINDING_CLASS_MAP , COORD_COLS, OUTPUT, THICKNESS
 
+
+def get_out_of_bounds_points(row, img_width: int, img_height: int):
+    """
+    Return a list of (i, x, y) for each corner i whose (xi, yi)
+    is outside [0, img_width-1] x [0, img_height-1].
+    """
+    bad_points = []
+    for i in range(1, 5):
+        x = row[f"x{i}"]
+        y = row[f"y{i}"]
+        if x < 0 or x >= img_width or y < 0 or y >= img_height:
+            bad_points.append((i, x, y))
+    return bad_points
+
+
+
+def clamp_coords_in_row(row, img_width: int, img_height: int) -> bool:
+    """
+    Clamp all (xi, yi) to [0, img_width-1] x [0, img_height-1] in-place.
+
+    Returns True if any coordinate was actually clamped.
+    """
+    clamped = False
+    max_x = img_width - 1
+    max_y = img_height - 1
+
+    for i in range(1, 5):
+        x_key = f"x{i}"
+        y_key = f"y{i}"
+        old_x = row[x_key]
+        old_y = row[y_key]
+
+        new_x = max(0.0, min(float(old_x), float(max_x)))
+        new_y = max(0.0, min(float(old_y), float(max_y)))
+
+        if new_x != old_x or new_y != old_y:
+            clamped = True
+            row[x_key] = new_x
+            row[y_key] = new_y
+
+    return clamped
 
 def compute_axis_aligned_bbox(row) -> tuple[float, float, float, float]:
     """
@@ -97,6 +137,33 @@ def parse_args() -> argparse.Namespace:
             "This limit applies separately to with_bbox and no_bbox."
         ),
     )
+    parser.add_argument(
+        "--keep-first-duplicate",
+        action="store_true",
+        help=(
+            "If set, for duplicated filenames keep the first occurrence "
+            "and drop only the subsequent ones. "
+            "If not set, drop all rows for any duplicated filename."
+        ),
+    )
+    oob_group = parser.add_mutually_exclusive_group()
+    oob_group.add_argument(
+        "--drop-out-of-bounds",
+        action="store_true",
+        help=(
+            "If set, skip any row whose coordinates fall outside "
+            "the video frame size (no image/label will be written)."
+        ),
+    )
+    oob_group.add_argument(
+        "--clamp-out-of-bounds",
+        action="store_true",
+        help=(
+            "If set, clamp any coordinate outside the frame to the "
+            "valid min/max border instead of skipping the row."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -109,6 +176,49 @@ def main() -> int:
 
     print(f"[INFO] Loading CSV: {csv_path}")
     df = load_csv(str(csv_path), args.separator)
+    #Duplicados
+    if args.keep_first_duplicate:
+        # Flag
+        df = df.with_columns(
+            pl.col("filename").is_duplicated().alias("is_dup")
+        )
+
+        dupes_df = df.filter(pl.col("is_dup"))
+        print(f"[INFO] Found {dupes_df.height} duplicated rows by filename (extra occurrences only)")
+
+        if dupes_df.height > 0:
+            dupes_df.write_csv(
+                os.path.join(args.output_dir, "duplicated_rows_by_filename.csv")
+            )
+
+        # only rows are not duplicates (includes the first appearance)
+
+        df = df.filter(~pl.col("is_dup")).drop("is_dup")
+
+    else:
+        # No flag
+        dupe_names = (
+            df
+            .group_by("filename")
+            .agg(pl.len().alias("count"))
+            .filter(pl.col("count") > 1)
+            .select("filename")
+        )
+
+        dupes_df = df.join(dupe_names, on="filename", how="inner")
+        print(f"[INFO] Found {dupes_df.height} rows with duplicated filenames (including first occurrences)")
+
+        if dupes_df.height > 0:
+            dupes_df.write_csv(
+                os.path.join(args.output_dir, "duplicated_rows_by_filename.csv")
+            )
+
+        # rows whose filename is NOT in the duplicate list
+        df = df.join(dupe_names, on="filename", how="anti")
+
+    print(f"[INFO] Rows after duplicate-filter: {df.height}")
+
+
 
     full_to_key, full_to_id = build_class_mappings()
 
@@ -170,6 +280,37 @@ def main() -> int:
                 )
                 continue
 
+            img_h, img_w = frame.shape[:2]
+            if args.drop_out_of_bounds:
+                bad_points = get_out_of_bounds_points(row, img_w, img_h)
+                if bad_points:
+                    print(
+                        f"[WARN] Skipping row for filename='{row['filename']}' "
+                        f"because some coordinates are outside [0,{img_w-1}]x[0,{img_h-1}]"
+                    )
+                    for i, x, y in bad_points:
+                        print(f"       -> (x{i}, y{i}) = ({x}, {y})")
+                    continue
+            elif args.clamp_out_of_bounds:
+                bad_points = get_out_of_bounds_points(row, img_w, img_h)
+                if bad_points:
+                    print(
+                        f"[INFO] Clamping coordinates for filename='{row['filename']}' "
+                        f"to frame bounds [0,{img_w-1}]x[0,{img_h-1}]"
+                    )
+                    for i, x, y in bad_points:
+                        print(f"       -> (x{i}, y{i}) was ({x}, {y})")
+                    clamped = clamp_coords_in_row(row, img_w, img_h)
+                    if clamped:
+                        print("       -> Coordinates updated after clamping.")
+
+            # Use original filename from metadata
+            original_filename = row["filename"]  # e.g. "something_0123.jpg"
+            original_filename = os.path.basename(original_filename)
+            name_root, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = ".png"  # fallback if metadata has no extension
+
             # Compute bbox
             x_min, y_min, x_max, y_max = compute_axis_aligned_bbox(row)
             img_h, img_w = frame.shape[:2]
@@ -179,15 +320,18 @@ def main() -> int:
                 x_min, y_min, x_max, y_max, img_w, img_h
             )
 
-            # rectangle on frame for  (NO YOLO with coords)
+            # Draw rectangle (for visualization only)
             pt1 = (int(round(x_min)), int(round(y_min)))
             pt2 = (int(round(x_max)), int(round(y_max)))
-            cv2.rectangle(frame, pt1, pt2, (0, 255, 0), 1)
-            base_name = f"{short_key}_bbox_{bbox_counter:06d}_x_{video_id}_f{frame_number}"
-            bbox_counter += 1
+            cv2.rectangle(frame, pt1, pt2, (0, 255, 0), THICKNESS)
 
-            img_path = os.path.join(bbox_dir, base_name + ".png")
-            label_path = os.path.join(bbox_dir, base_name + ".txt")
+            # Image and label paths based on metadata filename
+            img_filename = name_root + ext
+            label_filename = name_root + ".txt" # YOLO label
+
+            img_path = os.path.join(bbox_dir, img_filename)
+            label_path = os.path.join(bbox_dir, label_filename)
+
             cv2.imwrite(img_path, frame)
 
             # YOLO label
@@ -215,10 +359,15 @@ def main() -> int:
                 )
                 continue
 
-            base_name = f"{short_key}_full_{no_bbox_counter:06d}_x_{video_id}_f{frame_number}"
-            no_bbox_counter += 1
+            # Use original filename from metadata
+            original_filename = row["filename"]
+            original_filename = os.path.basename(original_filename)
+            name_root, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = ".png"
 
-            img_path = os.path.join(no_bbox_dir, base_name + ".png")
+            img_filename = name_root + ext
+            img_path = os.path.join(no_bbox_dir, img_filename)
             cv2.imwrite(img_path, frame)
 
             no_bbox_files.append(os.path.relpath(img_path, class_dir))
@@ -246,10 +395,25 @@ def main() -> int:
 0 para usar todas
 
 python split_by_dir.py \
-  --csv /home/ivan/Downloads/jose_luis_act/input/metadata.csv \
+  --csv /home/ivan/Downloads/ss_kvasir_dataset_access/input/metadata.csv \
   --separator ';' \
-  --output-dir /home/ivan/Downloads/jose_luis_act/output_clases \
-  --max-per-class 1
+  --output-dir /home/ivan/Downloads/ss_kvasir_dataset_access/output \
+  --max-per-class 0 \
+  --keep-first-duplicate \
+  --drop-out-of-bounds
+
+
+
+  
+
+
+python split_by_dir.py \
+  --csv .../metadata.csv \
+  --separator ';' \
+  --output-dir .../output \
+  --max-per-class 0 \
+  --keep-first-duplicate \
+  --clamp-out-of-bounds
 """
 
 if __name__ == "__main__":

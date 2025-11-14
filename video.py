@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import os
 import cv2
+from constants import VIDEO_PATH
+from constants import OUTPUT
 
-VIDEO_PATH = "/home/ivan/Downloads/drive_dataset_kvasir/labelled_videos/videos"
-OUTPUT = "/home/ivan/Downloads/jose_luis_act/output"
 
 def get_video_frame(frame_number, video_name, base_path=VIDEO_PATH, default_ext="mp4"):
     """
@@ -91,8 +91,7 @@ if __name__ == "__main__":
     frame_num = 52355
     frame = get_video_frame(frame_num, video_name)
     out_path = os.path.join(OUTPUT, f"{video_name}_frame_{frame_num}.png")
-    cv2.imwrite(out_path, frame)
-
+    cv2.imwrite(out_path, frame)    
 
     frame, t = get_video_frame_and_second(frame_num, video_name)
     print(f"Time (s): {t:.3f}")

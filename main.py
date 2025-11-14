@@ -6,7 +6,8 @@ import cv2
 import polars as pl
 
 from readmeta import load_csv, filter_missing_coords, FINDING_CLASS_MAP
-from video import get_video_frame, OUTPUT
+from video import get_video_frame
+from constants import OUTPUT
 
 
 def compute_axis_aligned_bbox(row) -> tuple[float, float, float, float]:

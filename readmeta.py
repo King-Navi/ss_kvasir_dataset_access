@@ -3,29 +3,7 @@ import argparse
 from pathlib import Path
 import polars as pl
 
-COORD_COLS = [
-    "x1", "y1",
-    "x2", "y2",
-    "x3", "y3",
-    "x4", "y4",
-]
-
-FINDING_CLASS_MAP = {
-    "ampulla": "Ampulla of Vater",
-    "angiectasia": "Angiectasia",
-    "blood_fresh": "Blood - fresh",
-    "blood_hematin": "Blood - hematin",
-    "erosion": "Erosion",
-    "erythema": "Erythema",
-    "foreign_body": "Foreign Body",
-    "ileocecal_valve": "Ileocecal valve",
-    "lymphangiectasia": "Lymphangiectasia",
-    "normal_mucosa": "Normal clean mucosa",
-    "polyp": "Polyp",
-    "pylorus": "Pylorus",
-    "reduced_view": "Reduced Mucosal View",
-    "ulcer": "Ulcer",
-}
+from constants import FINDING_CLASS_MAP , COORD_COLS
 
 def build_class_mappings():
     """
